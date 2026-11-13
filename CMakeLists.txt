@@ -304,6 +304,11 @@ endif()
 
 # Sort the C sources to ensure a stable layout of the final C file
 list(SORT c_sources)
+if(KernelOQueueScheduler)
+  list(APPEND c_sources
+       "${KernelOQueuePath}/scheduler.c"
+       "${KernelOQueuePath}/scheduler-tests.c")
+endif()
 
 # Add static header includes
 include_directories(

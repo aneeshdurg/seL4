@@ -6,6 +6,9 @@
  */
 
 #include <config.h>
+#ifdef CONFIG_OQUEUE_SCHEDULER
+#include "scheduler.h"
+#endif
 #include <assert.h>
 #include <kernel/boot.h>
 #include <machine/io.h>
@@ -618,6 +621,9 @@ static BOOT_CODE bool_t try_init_kernel(
      * primary has to do now is schedule the initial thread. Currently there is
      * nothing that touches any global data structures, nevertheless we grab the
      * BKL here to play safe. It is released when the kernel is left. */
+#ifdef CONFIG_OQUEUE_SCHEDULER
+    oqueue_scheduler_init();
+#endif
     NODE_LOCK_SYS;
 
     printf("Booting all finished, dropped to user space\n");
