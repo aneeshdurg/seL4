@@ -377,43 +377,21 @@ void schedule(void)
 #endif
 
     if (NODE_STATE(ksSchedulerAction) != SchedulerAction_ResumeCurrentThread) {
-        bool_t was_runnable;
         if (isSchedulable(NODE_STATE(ksCurThread))) {
-            was_runnable = true;
             SCHED_ENQUEUE_CURRENT_TCB;
-        } else {
-            was_runnable = false;
         }
 
         if (NODE_STATE(ksSchedulerAction) == SchedulerAction_ChooseNewThread) {
             scheduleChooseNewThread();
         } else {
+            /* The policy decides among ready threads, so a direct candidate does not bypass
+             * it: it is appended to its ready queue and the next thread is chosen by
+             * chooseThread. */
             tcb_t *candidate = NODE_STATE(ksSchedulerAction);
             assert(isSchedulable(candidate));
-            /* Avoid checking bitmap when ksCurThread is higher prio, to
-             * match fast path.
-             * Don't look at ksCurThread prio when it's idle, to respect
-             * information flow in non-fastpath cases. */
-            bool_t fastfail =
-                NODE_STATE(ksCurThread) == NODE_STATE(ksIdleThread)
-                || (candidate->tcbPriority < NODE_STATE(ksCurThread)->tcbPriority);
-            if (fastfail &&
-                !isHighestPrio(ksCurDomain, candidate->tcbPriority)) {
-                SCHED_ENQUEUE(candidate);
-                /* we can't, need to reschedule */
-                NODE_STATE(ksSchedulerAction) = SchedulerAction_ChooseNewThread;
-                scheduleChooseNewThread();
-            } else if (was_runnable && candidate->tcbPriority == NODE_STATE(ksCurThread)->tcbPriority) {
-                /* We append the candidate at the end of the scheduling queue, that way the
-                 * current thread, that was enqueued at the start of the scheduling queue
-                 * will get picked during chooseNewThread */
-                SCHED_APPEND(candidate);
-                NODE_STATE(ksSchedulerAction) = SchedulerAction_ChooseNewThread;
-                scheduleChooseNewThread();
-            } else {
-                assert(candidate != NODE_STATE(ksCurThread));
-                switchToThread(candidate);
-            }
+            SCHED_APPEND(candidate);
+            NODE_STATE(ksSchedulerAction) = SchedulerAction_ChooseNewThread;
+            scheduleChooseNewThread();
         }
     }
     NODE_STATE(ksSchedulerAction) = SchedulerAction_ResumeCurrentThread;
@@ -432,6 +410,28 @@ void schedule(void)
 #endif
 }
 
+/* Scheduling policy: of the schedulable threads on a ready queue, pick the first one with the
+ * least remaining time slice. The strict comparison keeps the earlier thread on ties. This is
+ * the C counterpart of oqueueSelect in the Haskell model (spec/haskell/src/SEL4/Kernel/Thread.lhs). */
+static tcb_t *oqueueSelect(tcb_t *head)
+{
+    tcb_t *best = NULL;
+    word_t bestBudget = 0;
+    tcb_t *cursor = head;
+
+    while (cursor != NULL) {
+        if (isSchedulable(cursor)) {
+            word_t budget = cursor->tcbTimeSlice;
+            if (best == NULL || budget < bestBudget) {
+                best = cursor;
+                bestBudget = budget;
+            }
+        }
+        cursor = cursor->tcbSchedNext;
+    }
+    return best;
+}
+
 void chooseThread(void)
 {
     word_t prio;
@@ -447,6 +447,7 @@ void chooseThread(void)
     if (likely(NODE_STATE(ksReadyQueuesL1Bitmap[dom]))) {
         prio = getHighestPrio(dom);
         thread = NODE_STATE(ksReadyQueues)[ready_queues_index(dom, prio)].head;
+        thread = oqueueSelect(thread);
         assert(thread);
         assert(isSchedulable(thread));
 #ifdef CONFIG_KERNEL_MCS
