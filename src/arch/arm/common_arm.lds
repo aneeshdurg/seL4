@@ -52,6 +52,12 @@ SECTIONS
     {
         *(.rodata)
         *(.rodata.*)
+#ifdef CONFIG_OQUEUE
+        . = ALIGN(8);
+        __start_oqueue_sites = .;
+        KEEP(*(oqueue_sites))
+        __stop_oqueue_sites = .;
+#endif
     }
 
     .data . : AT(ADDR(.data) - KERNEL_OFFSET)

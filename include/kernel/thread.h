@@ -74,7 +74,12 @@ static inline prio_t getHighestPrio(word_t dom)
     return (l1index_to_prio(l1index) | l2index);
 }
 
+#ifdef CONFIG_OQUEUE
+bool_t isHighestPrio(word_t dom, prio_t prio);
+__attribute__((noinline, annotate("oqueue_consumable"))) bool_t isHighestPrio(word_t dom, prio_t prio)
+#else
 static inline bool_t isHighestPrio(word_t dom, prio_t prio)
+#endif
 {
     return NODE_STATE(ksReadyQueuesL1Bitmap)[dom] == 0 ||
            prio >= getHighestPrio(dom);
