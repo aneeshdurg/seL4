@@ -22,6 +22,12 @@
 #include <machine/registerset.h>
 #include <machine/fpu.h>
 #include <linker.h>
+#ifdef CONFIG_OQUEUE_SCHEDULER
+#include "scheduler.h"
+#ifdef CONFIG_OQUEUE_PATCHABLE
+#include "patch-aarch64.h"
+#endif
+#endif
 
 static seL4_MessageInfo_t
 transferCaps(seL4_MessageInfo_t info,
@@ -369,11 +375,45 @@ static void scheduleChooseNewThread(void)
     chooseThread();
 }
 
+#ifdef CONFIG_OQUEUE_SCHEDULER
+bool_t oqueue_scheduler_eligible(const tcb_t *thread)
+{
+    return thread->tcbDomain == ksCurDomain && isSchedulable(thread) &&
+           refill_ready(thread->tcbSchedContext) &&
+           refill_sufficient(thread->tcbSchedContext, 0);
+}
+
+word_t oqueue_scheduler_budget(const tcb_t *thread)
+{
+    ticks_t pending = thread->tcbSchedContext == NODE_STATE(ksCurSC) ?
+                      NODE_STATE(ksConsumed) : 0;
+    return refill_capacity(thread->tcbSchedContext, pending);
+}
+#endif
+
+#ifdef CONFIG_OQUEUE_PATCHABLE
+__attribute__((noinline))
+#endif
 void schedule(void)
 {
 #ifdef CONFIG_KERNEL_MCS
     awaken();
     checkDomainTime();
+#endif
+
+#ifdef CONFIG_OQUEUE_PATCHABLE
+    OQ_PATCH_GATE(1, oq_normalize_enabled);
+oq_normalize_done:
+    ;
+#elif defined(CONFIG_OQUEUE_SCHEDULER)
+    /* Active direct candidates must go through the policy's ready queue. */
+    if (oqueue_scheduler_active() &&
+        NODE_STATE(ksSchedulerAction) != SchedulerAction_ResumeCurrentThread &&
+        NODE_STATE(ksSchedulerAction) != SchedulerAction_ChooseNewThread) {
+        tcb_t *candidate = NODE_STATE(ksSchedulerAction);
+        SCHED_APPEND(candidate);
+        NODE_STATE(ksSchedulerAction) = SchedulerAction_ChooseNewThread;
+    }
 #endif
 
     if (NODE_STATE(ksSchedulerAction) != SchedulerAction_ResumeCurrentThread) {
@@ -430,8 +470,22 @@ void schedule(void)
         NODE_STATE(ksReprogram) = false;
     }
 #endif
+#ifdef CONFIG_OQUEUE_PATCHABLE
+    return;
+oq_normalize_enabled:
+    if (NODE_STATE(ksSchedulerAction) != SchedulerAction_ResumeCurrentThread &&
+        NODE_STATE(ksSchedulerAction) != SchedulerAction_ChooseNewThread) {
+        tcb_t *candidate = NODE_STATE(ksSchedulerAction);
+        SCHED_APPEND(candidate);
+        NODE_STATE(ksSchedulerAction) = SchedulerAction_ChooseNewThread;
+    }
+    goto oq_normalize_done;
+#endif
 }
 
+#ifdef CONFIG_OQUEUE_PATCHABLE
+__attribute__((noinline))
+#endif
 void chooseThread(void)
 {
     word_t prio;
@@ -447,6 +501,13 @@ void chooseThread(void)
     if (likely(NODE_STATE(ksReadyQueuesL1Bitmap[dom]))) {
         prio = getHighestPrio(dom);
         thread = NODE_STATE(ksReadyQueues)[ready_queues_index(dom, prio)].head;
+#ifdef CONFIG_OQUEUE_PATCHABLE
+        OQ_PATCH_GATE(2, oq_select_enabled);
+oq_select_done:
+        ;
+#elif defined(CONFIG_OQUEUE_SCHEDULER)
+        thread = oqueue_scheduler_pick(thread);
+#endif
         assert(thread);
         assert(isSchedulable(thread));
 #ifdef CONFIG_KERNEL_MCS
@@ -455,8 +516,24 @@ void chooseThread(void)
 #endif
         switchToThread(thread);
     } else {
+#ifdef CONFIG_OQUEUE_PATCHABLE
+        OQ_PATCH_GATE(3, oq_idle_enabled);
+oq_idle_done:
+        ;
+#elif defined(CONFIG_OQUEUE_SCHEDULER)
+        oqueue_scheduler_idle();
+#endif
         switchToIdleThread();
     }
+#ifdef CONFIG_OQUEUE_PATCHABLE
+    return;
+oq_select_enabled:
+    thread = oqueue_scheduler_pick(thread);
+    goto oq_select_done;
+oq_idle_enabled:
+    oqueue_scheduler_idle();
+    goto oq_idle_done;
+#endif
 }
 
 void switchToThread(tcb_t *thread)

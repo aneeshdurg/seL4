@@ -304,6 +304,11 @@ endif()
 
 # Sort the C sources to ensure a stable layout of the final C file
 list(SORT c_sources)
+if(KernelOQueueScheduler)
+  list(APPEND c_sources
+       "${KernelOQueuePath}/scheduler.c"
+       "${KernelOQueuePath}/scheduler-tests.c")
+endif()
 
 # Add static header includes
 include_directories(
@@ -583,6 +588,11 @@ target_link_libraries(kernel.elf PRIVATE kernel_Config kernel_autoconf)
 set_property(TARGET kernel.elf APPEND_STRING PROPERTY LINK_FLAGS " -Wl,-T ${linker_lds_path} ")
 set_target_properties(kernel.elf PROPERTIES LINK_DEPENDS "${linker_lds_path}")
 add_dependencies(kernel.elf circular_includes)
+
+set(KernelOQueuePath "" CACHE PATH "External OQueue kernel instrumentation")
+if(KernelOQueuePath)
+  include("${KernelOQueuePath}/kernel.cmake")
+endif()
 
 # The following commands setup the install target for copying generated files and
 # compilation outputs to an install location: CMAKE_INSTALL_PREFIX.

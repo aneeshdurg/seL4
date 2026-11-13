@@ -12,6 +12,7 @@
 #endif
 #include <benchmark/benchmark_utilisation.h>
 
+#if defined(CONFIG_FASTPATH) || defined(CONFIG_SIGNAL_FASTPATH) || defined(CONFIG_EXCEPTION_FASTPATH)
 #ifdef CONFIG_ARCH_ARM
 static inline
 FORCE_INLINE
@@ -897,3 +898,4 @@ void NORETURN fastpath_vm_fault(vm_fault_type_t type)
     fastpath_restore(badge, msgInfo, NODE_STATE(ksCurThread));
 }
 #endif
+#endif /* any fastpath enabled */

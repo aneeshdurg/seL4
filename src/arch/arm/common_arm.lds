@@ -32,6 +32,7 @@ SECTIONS
     {
         /* Sit inside a large frame */
         . = ALIGN(64K);
+        __oq_text_start = .;
         *(.vectors)
 
         /* Fastpath code */
@@ -46,12 +47,27 @@ SECTIONS
 
         /* Standard kernel */
         *(.text)
+        __oq_text_end = .;
     }
+#ifdef CONFIG_OQUEUE_PATCHABLE
+    .oq_patch_sites ALIGN(8) : AT(ADDR(.oq_patch_sites) - KERNEL_OFFSET)
+    {
+        __start_oq_patch_sites = .;
+        KEEP(*(oq_patch_sites))
+        __stop_oq_patch_sites = .;
+    }
+#endif
 
     .rodata . : AT(ADDR(.rodata) - KERNEL_OFFSET)
     {
         *(.rodata)
         *(.rodata.*)
+#ifdef CONFIG_OQUEUE
+        . = ALIGN(8);
+        __start_oqueue_sites = .;
+        KEEP(*(oqueue_sites))
+        __stop_oqueue_sites = .;
+#endif
     }
 
     .data . : AT(ADDR(.data) - KERNEL_OFFSET)
