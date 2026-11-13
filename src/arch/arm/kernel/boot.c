@@ -24,6 +24,10 @@
 #include <arch/machine/fpu.h>
 #include <arch/machine/tlb.h>
 
+#ifdef CONFIG_OQUEUE_SMOKE
+#include "oqueue.h"
+#endif
+
 #ifdef CONFIG_ARM_SMMU
 #include <drivers/smmu/smmuv2.h>
 #endif
@@ -621,6 +625,9 @@ static BOOT_CODE bool_t try_init_kernel(
     NODE_LOCK_SYS;
 
     printf("Booting all finished, dropped to user space\n");
+#ifdef CONFIG_OQUEUE_SMOKE
+    oqueue_smoke_init();
+#endif
 
     /* kernel successfully initialized */
     return true;

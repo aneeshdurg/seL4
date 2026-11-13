@@ -584,6 +584,11 @@ set_property(TARGET kernel.elf APPEND_STRING PROPERTY LINK_FLAGS " -Wl,-T ${link
 set_target_properties(kernel.elf PROPERTIES LINK_DEPENDS "${linker_lds_path}")
 add_dependencies(kernel.elf circular_includes)
 
+set(KernelOQueuePath "" CACHE PATH "External OQueue kernel instrumentation")
+if(KernelOQueuePath)
+  include("${KernelOQueuePath}/kernel.cmake")
+endif()
+
 # The following commands setup the install target for copying generated files and
 # compilation outputs to an install location: CMAKE_INSTALL_PREFIX.
 # CMAKE_INSTALL_PREFIX can be set on the cmake command line.
